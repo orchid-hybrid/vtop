@@ -20,7 +20,6 @@ var App = function() {
 	VERSION = require('./package.json').version,
 	child_process = require('child_process'),
 	glob = require("glob"),
-	layout = require("./layout.js"),
 	themes = "";
 
     // load themes
@@ -39,10 +38,11 @@ var App = function() {
 	.parse(process.argv);
 
     /**
-     * Instance of blessed screen
+     * Instance of blessed screen and other program state
      */
     var screen;
     var loadedTheme;
+    var layouts, currentLayout, layout;
     var upgradeNotice = false;
 
     var charts = [];
@@ -153,22 +153,27 @@ var App = function() {
     };
 
     var layoutPanels = function() {
-	// remove the panels
+	// remove the panels from the previous layout
 	for(i in layout.panels) {
 	    screen.remove(layout.panels[i].container);
 	}
-
-	// compute the layout
+	
+	// then switch to the current layout
+	layout = layouts[currentLayout];
+	
+	// compute the layout geometry
 	layout.performLayout(loadedTheme, screen);
 
-	// and add them back
+	// and add the panels back
 	for(i in layout.panels) {
 	    screen.append(layout.panels[i].container);
 	}
 
 	// now attach our charts to the panels
 	for(i in charts) {
-	    layout.panels[charts[i].place].container.setLabel(' ' + charts[i].plugin.title + ' ')
+	    if(layout.panels[charts[i].place]) {
+		layout.panels[charts[i].place].container.setLabel(' ' + charts[i].plugin.title + ' ')
+	    }
 	}
     };
     
@@ -196,14 +201,24 @@ var App = function() {
 	    attachHeader();
 	    attachFooter();
 
-	    charts = [];
 	    var plugins = ['cpu', 'memory', 'process'];
+	    charts = [];
 	    for(plugin in plugins) {
 		charts.push({
 		    place: plugins[plugin],
 		    plugin: require('./sensors/' + plugins[plugin] + '.js')
 		});
 	    }
+
+	    var layoutScripts = ['advanced-memory'/*, 'general-stats'*/];
+	    layouts = [];
+	    for(i in layoutScripts) {
+		layouts.push(
+		    require('./layouts/' + layoutScripts[i] + '.js')
+		);
+	    }
+	    currentLayout = 0;
+	    layout = layouts[currentLayout];
 	    
 	    layoutPanels();
 	    screen.on('resize', function() {
