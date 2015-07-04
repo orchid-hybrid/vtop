@@ -175,6 +175,8 @@ var App = function() {
 		layout.panels[charts[i].place].container.setLabel(' ' + charts[i].plugin.title + ' ')
 	    }
 	}
+
+	layout.panels['process']['content'].focus();
     };
     
     // Public function (just the entry point)
@@ -194,6 +196,19 @@ var App = function() {
 		console.log('The theme \'' + theme + '\' does not exist.');
 		process.exit(1);
 	    }
+
+	    var upgrading = false;
+	    var doCheck = function() {
+		upgrade.check(function(v) {
+		    upgradeNotice = v;
+		    attachHeader();
+		});
+	    };
+	    
+	    doCheck();
+	    // Check for updates every 5 minutes
+	    //setInterval(doCheck, 300000);
+
 	    
 	    // Create a screen object.
 	    screen = blessed.screen();
@@ -210,7 +225,7 @@ var App = function() {
 		});
 	    }
 
-	    var layoutScripts = ['advanced-memory'/*, 'general-stats'*/];
+	    var layoutScripts = ['general-stats', 'advanced-memory'];
 	    layouts = [];
 	    for(i in layoutScripts) {
 		layouts.push(
@@ -224,6 +239,38 @@ var App = function() {
 	    screen.on('resize', function() {
 		layoutPanels();
 		screen.render();
+	    });	    
+
+	    // Configure 'q', esc, Ctrl+C for quit
+	    screen.on('keypress', function(ch, key) {
+		if (
+		    upgrading === false &&
+			(
+			    key.name === 'q' ||
+				key.name === 'escape' ||
+				(key.name === 'c' && key.ctrl === true)
+			)
+		) {
+		    return process.exit(0);
+		}
+
+		if (key.name === 'u' && upgrading === false) {
+		    upgrading = true;
+		    
+		    //processListSelection.detach();
+		    program = blessed.program();
+		    program.clear();
+		    program.disableMouse();
+		    program.showCursor();
+		    program.normalBuffer();
+		    
+		    // @todo: show changelog  AND  smush existing data into it :D
+		    upgrade.install('vtop', [
+			{
+			    'theme': theme
+			}
+		    ]);
+		}
 	    });
 	    
 	    screen.render();
