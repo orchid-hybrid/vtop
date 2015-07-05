@@ -499,7 +499,6 @@ var App = function() {
 					graph_scale /= 2;
 				}
 			});
-
 			drawHeader();
 
 			//setInterval(drawHeader, 1000);

@@ -44,6 +44,7 @@ var App = function() {
     var loadedTheme;
     var layouts, currentLayout, layout;
     var upgradeNotice = false;
+    var graph_scale = 1;
 
     var charts = [];
     
@@ -151,6 +152,78 @@ var App = function() {
 	}
 	return new Array(num + 1).join(string);
     };
+    
+    /**
+     * This draws a chart
+     * @param  {int} chartKey The key of the chart.
+     * @return {string}       The text output to draw.
+     */
+    var drawChart = function(chart) {
+	var c = chart.canvas;
+	
+	c.clear();
+	
+	if (! chart.plugin.initialized) {
+	    return false;
+	}
+
+	var dataPointsToKeep = 5000;
+
+	chart.values[chart.position] = chart.plugin.currentValue;
+
+	var computeValue = function(input) {
+	    return c.height - Math.floor(((c.height + 1) / 100) * input) - 1;
+	};
+
+	if (chart.position > dataPointsToKeep) {
+	    delete chart.values[chart.position - dataPointsToKeep];
+	}
+
+	for (var pos in chart.values) {
+
+	    if (graph_scale >= 1 || (graph_scale < 1 && pos % (1 / graph_scale) == 0)) {
+		var p = parseInt(pos, 10) + (c.width - chart.values.length);
+		// calculated x-value based on graph_scale
+		var x = (p * graph_scale) + ((1 - graph_scale) * c.width);
+
+		// draws top line of chart
+		if (p > 1 && computeValue(chart.values[pos - 1]) > 0) {
+		    c.set(x, computeValue(chart.values[pos - 1]));
+		}
+
+		// Start deleting old data points to improve performance
+		// @todo: This is not be the best place to do this
+
+		// fills all area underneath top line
+		for (var y = computeValue(chart.values[pos - 1]); y < c.height; y ++) {
+		    if (graph_scale > 1 && p > 0 && y > 0) {
+			var current = computeValue(chart.values[pos - 1]),
+			    next = computeValue(chart.values[pos]),
+			    diff = (next - current) / graph_scale;
+
+			// adds columns between data if graph is zoomed in, takes average where data is missing to make smooth curve
+			for (var i = 0; i < graph_scale; i++) {
+			    c.set(x + i, y + (diff * i));
+			    for (var j = y + (diff * i); j < c.height; j++) {
+				c.set(x + i, j);
+			    }
+			}
+		    } else if (graph_scale <= 1) {
+			// magic number used to calculate when to draw a value onto the chart
+			var allowedPValues = (chart.values.length - ((graph_scale * chart.values.length) + 1)) * -1;
+			c.set(x, y);
+		    }
+		}
+	    }
+	}
+
+	// Add percentage to top right of the chart by splicing it into the braille data
+	var textOutput = c.frame().split("\n");
+	var percent = '   ' + chart.plugin.currentValue;
+	textOutput[0] = textOutput[0].slice(0, textOutput[0].length - 4) + '{white-fg}' + percent.slice(-3) + '%{/white-fg}';
+
+	return textOutput.join("\n");
+    };
 
     var layoutPanels = function() {
 	// remove the panels from the previous layout
@@ -173,11 +246,32 @@ var App = function() {
 	for(i in charts) {
 	    if(layout.panels[charts[i].place]) {
 		layout.panels[charts[i].place].container.setLabel(' ' + charts[i].plugin.title + ' ')
+		
+		if(charts[i].plugin.type == 'chart') {
+		    charts[i].width = (layout.panels[charts[i].place].content.width - 3) * 2;
+		    charts[i].height = (layout.panels[charts[i].place].content.height - 2) * 4;
+		    charts[i].canvas = new canvas(charts[i].width, charts[i].height);
+		}
 	    }
 	}
-
+	
 	layout.panels['process']['content'].focus();
     };
+    
+    var draw = function() {
+	for(i in charts) {
+	    charts[i].plugin.poll();
+	    charts[i].position++;
+	    
+	    if(layout.panels[charts[i].place]) {
+		if(charts[i].plugin.type == 'chart') {
+		    layout.panels[charts[i].place].content.setContent(drawChart(charts[i]))
+		}
+	    }
+	}
+	
+	screen.render();
+    }
     
     // Public function (just the entry point)
     return {
@@ -221,7 +315,10 @@ var App = function() {
 	    for(plugin in plugins) {
 		charts.push({
 		    place: plugins[plugin],
-		    plugin: require('./sensors/' + plugins[plugin] + '.js')
+		    plugin: require('./sensors/' + plugins[plugin] + '.js'),
+		    canvas: null,
+		    values: [],
+		    position: 0
 		});
 	    }
 
@@ -271,7 +368,15 @@ var App = function() {
 			}
 		    ]);
 		}
+		
+		if ((key.name =='left' || key.name == 'h') && graph_scale < 8) {
+		    graph_scale *= 2;
+		} else if ((key.name =='right' || key.name == 'l') && graph_scale > 0.125) {
+		    graph_scale /= 2;
+		}
 	    });
+
+	    setInterval(draw, 100);
 	    
 	    screen.render();
 	}
